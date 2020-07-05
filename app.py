@@ -5,6 +5,10 @@ from flask import request, url_for, redirect, flash
 from flask import Flask
 from flask import render_template
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import login_required, login_user, logout_user, current_user
+from flask_login import LoginManager
+
+
 WIN = sys.platform.startswith('win')
 if WIN: # 如果是 Windows 系统，使用三个斜线
     prefix = 'sqlite:///'
@@ -54,10 +58,21 @@ db = SQLAlchemy(app)
 # @app.route('/')
 # def index():
 #     return render_template('index.html', name=name, movies = movies)
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin, login_user
 
-class User(db.Model): # 表名将会是 user（自动生成，小写处理）
+class User(db.Model, UserMixin): # 表名将会是 user（自动生成，小写处理）
     id = db.Column(db.Integer, primary_key=True) # 主键
     name = db.Column(db.String(20)) # 名字
+    username = db.Column(db.String(20))
+    password_hash = db.Column(db.String(128))
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def validate_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
 
 class Movie(db.Model): # 表名将会是 movie
     id = db.Column(db.Integer, primary_key=True) # 主键
@@ -65,6 +80,36 @@ class Movie(db.Model): # 表名将会是 movie
     year = db.Column(db.String(4)) # 电影年份
 
 import click
+
+@app.cli.command() # 注册为命令
+@click.option('--drop', is_flag=True, help='Create after drop.')
+# 设置选项
+def initdb(drop):
+    """Initialize the database."""
+    if drop: # 判断是否输入了选项
+        db.drop_all()
+    db.create_all()
+    click.echo('Initialized database.')
+
+@app.cli.command()
+@click.option('--username', prompt=True, help='The username used to login.')
+@click.option('--password', prompt=True, hide_input=True, confirmation_prompt=True, help='The password used to login.')
+def admin(username, password):
+    db.create_all()
+
+    user = User.query.first()
+    if user is not None:
+        click.echo('Updating user...')
+        user.username = username
+        user.set_password(password)
+    else:
+        click.echo('Creating user...')
+        user = User(username=username, name='Admin')
+        user.set_password(password)
+        db.session.add(user)
+    db.session.commit()
+    click.echo('Done.')
+
 @app.cli.command()
 def forge():
     """Generate fake data."""
@@ -104,10 +149,15 @@ def page_not_found(e):
 # def index():
 #     movies = Movie.query.all()
 #     return render_template('index.html', movies = movies)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
+        if not current_user.is_authenticated:  # 如果当前用户未认证
+            return redirect(url_for('index'))  # 重定向到主页
         title = request.form.get('title')
         year = request.form.get('year')
         if not title or not year or len(year) > 4 or len(title) > 60:
@@ -122,6 +172,7 @@ def index():
     user = User.query.first()
     movies = Movie.query.all()
     return render_template('index.html', user=user, movies=movies)
+
 
 @app.route('/movie/edit/<int:movie_id>', methods=['POST', 'GET'])
 def edit(movie_id):
@@ -141,10 +192,64 @@ def edit(movie_id):
 
     return render_template('edit.html', movie=movie)
 
+
 @app.route('/movie/delete/<int:movie_id>', methods=['POST'])
+@login_required
 def delete(movie_id):
     movie = Movie.query.get_or_404(movie_id)
     db.session.delete(movie)
     db.session.commit()
     flash('Item deleted.')
     return redirect(url_for('index'))
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    user = User.query.get(int(user_id))
+    return user
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        if not username or not password:
+            flash('Invalid input.')
+            return redirect(url_for('login'))
+        user = User.query.first()
+        # 验证用户名和密码是否一致
+        if username == user.username and user.validate_password(password):
+            login_user(user) # 登入用户
+            flash('Login success.')
+            return redirect(url_for('index')) # 重定向到主页
+        flash('Invalid username or password.') # 如果验证失败，显示错误消息
+        return redirect(url_for('login')) # 重定向回登录页面
+    return render_template('login.html')
+
+
+@app.route('/logout')
+@login_required # 用于视图保护，后面会详细介绍
+def logout():
+    logout_user() # 登出用户
+    flash('Goodbye.')
+    return redirect(url_for('index')) # 重定向回首页
+
+
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    if request.method == 'POST':
+        name = request.form['name']
+        if not name or len(name) > 20:
+            flash('Invalid input.')
+            return redirect(url_for('settings'))
+        current_user.name = name
+        # current_user 会返回当前登录用户的数据库记录对象
+        # 等同于下面的用法
+        # user = User.query.first()
+        # user.name = name
+        db.session.commit()
+        flash('Settings updated.')
+        return redirect(url_for('index'))
+    return render_template('settings.html')
