@@ -3,15 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <title>{{name}}'s Watchlist</title>
+    <link rel="icon" href="{{url_for('static', filename='123.gif')}}">
+    <link rel="stylesheet" href="{{url_for('static', filename='style.css')}}" type="text/css">
 </head>
 <body>
-    <h2>{{name}}'s Watchlist</h2>
+    <h2><img alt="Avatar" class="avatar" src="{{ url_for('static', filename='images/a1.jpg') }}">
+        {{name}}'s Watchlist</h2>
     <p>{{movies|length}} Titles</p>
-    <ul>
+    <ul class="movie-list">
         {% for movie in movies %}
-        <li>{{movie.title}}  - {{movie.year}}</li>
+        <li>{{movie.title}} - {{movie.year}}</li>
         {% endfor %}
     </ul>
+    <img alt="Walking Totoro" class="totoro" src="{{ url_for('static', filename='images/a2.jpg') }}">
     <footer>
         <small>&copy; 2020 <a href="http://baidu.com">HelloFlask</a></small>
     </footer>
