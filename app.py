@@ -73,13 +73,14 @@ class User(db.Model, UserMixin): # 表名将会是 user（自动生成，小写�
     def validate_password(self, password):
         return check_password_hash(self.password_hash, password)
 
-
 class Movie(db.Model): # 表名将会是 movie
     id = db.Column(db.Integer, primary_key=True) # 主键
     title = db.Column(db.String(60)) # 电影标题
     year = db.Column(db.String(4)) # 电影年份
 
 import click
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
 
 @app.cli.command() # 注册为命令
 @click.option('--drop', is_flag=True, help='Create after drop.')
@@ -149,8 +150,6 @@ def page_not_found(e):
 # def index():
 #     movies = Movie.query.all()
 #     return render_template('index.html', movies = movies)
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -161,7 +160,7 @@ def index():
         title = request.form.get('title')
         year = request.form.get('year')
         if not title or not year or len(year) > 4 or len(title) > 60:
-            flash('Invavid input.')
+            flash('Invalid input.')
             return redirect(url_for('index'))
         movie = Movie(title=title, year=year)
         db.session.add(movie)
@@ -182,12 +181,12 @@ def edit(movie_id):
         title = request.form['title']
         year = request.form['year']
         if not title or not year or len(year) > 4 or len(title) > 60:
-            flash('Invavid input.')
+            flash('Invalid input.')
             return redirect(url_for('edit', movie_id=movie_id))
         movie.title = title
         movie.year = year
         db.session.commit()
-        flash('Item created.')
+        flash('Item updated.')
         return redirect(url_for('index'))
 
     return render_template('edit.html', movie=movie)
